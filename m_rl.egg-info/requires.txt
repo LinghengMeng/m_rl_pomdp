@@ -1,0 +1,13 @@
+joblib
+gym==0.19.0
+mujoco-py
+numpy
+pybullet==3.2.0
+pandas
+scipy
+google-cloud-storage
+torch
+SQLAlchemy
+pep517
+python-osc
+psycopg2
