@@ -19,7 +19,7 @@ setup(
         'gym==0.19.0',
         'mujoco-py',
         'numpy',
-        'pybullet==3.2.0',
+        'pybullet',
         'pandas',
         # 'pytest',
         # 'psutil',
