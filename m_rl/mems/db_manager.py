@@ -502,9 +502,6 @@ class DatabaseManager:
                 self.local_db_session = self.local_db_session_maker()
 
                 self.local_db_exp_table_op = ExperienceTableOperator(self.local_db_session)
-                self.local_db_seg_table_op = SegmentTableOperator(self.local_db_session)
-                self.local_db_pref_table_op = PreferenceTableOperator(self.local_db_session)
-                self.local_db_seg_pair_dist_table_op = SegmentPairDistanceTableOperator(self.local_db_session)
 
             self.local_db_meta = sqla.MetaData()
             self.local_db_meta.reflect(bind=self.local_db_engine)
