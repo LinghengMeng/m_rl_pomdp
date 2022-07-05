@@ -109,19 +109,20 @@ class MLPActorCritic(nn.Module):
 
 
     def __init__(self, observation_space, action_space, 
-                 hidden_sizes=(64,64), activation=nn.Tanh, output_activation=nn.Tanh):
+                 hidden_sizes=(64,64), activation=nn.Tanh, pi_output_activation=nn.Tanh, v_output_activation=nn.Identity, clamp_action=False):
         super().__init__()
 
         obs_dim = observation_space.shape[0]
+        self.clamp_action = clamp_action
 
         # policy builder depends on action space
         if isinstance(action_space, Box):
-            self.pi = MLPGaussianActor(obs_dim, action_space.shape[0], hidden_sizes, activation, output_activation=nn.Tanh)
+            self.pi = MLPGaussianActor(obs_dim, action_space.shape[0], hidden_sizes, activation, output_activation=pi_output_activation)
         elif isinstance(action_space, Discrete):
-            self.pi = MLPCategoricalActor(obs_dim, action_space.n, hidden_sizes, activation, output_activation=nn.Tanh)
+            self.pi = MLPCategoricalActor(obs_dim, action_space.n, hidden_sizes, activation, output_activation=pi_output_activation)
 
         # build value function
-        self.v = MLPCritic(obs_dim, hidden_sizes, activation, output_activation=nn.Identity)
+        self.v = MLPCritic(obs_dim, hidden_sizes, activation, output_activation=v_output_activation)
 
     def step(self, obs):
         with torch.no_grad():
@@ -131,7 +132,8 @@ class MLPActorCritic(nn.Module):
             v = self.v(obs)
             # Important: a sampled from normal distribution may beyond the action limit.
             # a = torch.tanh(a)
-            # a = torch.clamp(a, -1, 1)
+            if self.clamp_action:
+                a = torch.clamp(a, -1, 1)
         return a.cpu().numpy(), v.cpu().numpy(), logp_a.cpu().numpy()
 
     def act(self, obs):

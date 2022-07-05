@@ -1,4 +1,5 @@
 import numpy as np
+from copy import deepcopy
 import torch
 from torch.optim import Adam
 import gym
@@ -144,6 +145,10 @@ class PPO(object):
         self.train_v_iters = train_v_iters
         self.target_kl = target_kl
 
+        self.use_targ_v = False
+        polyak = 0.995
+        self.polyak = polyak
+
         # Variables to store experiences
         self.obs = None
         self.act = None
@@ -160,9 +165,17 @@ class PPO(object):
     def _init_actor_critic(self):
         # Set up function for computing PPO policy loss
         # Create actor-critic module
-        self.ac = core.MLPActorCritic(self.obs_space, self.act_space, self.hidden_sizes)
+        self.ac = core.MLPActorCritic(self.obs_space, self.act_space, self.hidden_sizes, clamp_action=True)
+        self.ac_targ = deepcopy(self.ac)
+
         self.ac_device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
         self.ac.to(self.ac_device)
+        self.ac_targ.to(self.ac_device)
+
+        # Freeze target networks with respect to optimizers (only update via polyak averaging)
+        for p in self.ac_targ.parameters():
+            p.requires_grad = False
+
         # Set up optimizers for policy and value function
         self.pi_optimizer = Adam(self.ac.pi.parameters(), lr=self.pi_lr)
         self.vf_optimizer = Adam(self.ac.v.parameters(), lr=self.vf_lr)
@@ -202,6 +215,7 @@ class PPO(object):
     def interact(self, time_step, new_obs, rew, hc_rew, done, info, terminal, logger):
         # If not the initial observation, store the latest experience (obs, act, rew, new_obs, done).
         if self.obs is not None:
+            # rew, hc_rew = rew / 1000, hc_rew / 1000
             self.mem_manager.store_experience(self.obs, self.act, new_obs, rew, hc_rew, done, 'PPO_agent',
                                               obs_time=self.obs_timestamp, act_time=info['act_datetime'], obs2_time=info['obs_datetime'])
             self.buf.store(self.obs, self.act, rew, self.v, self.logp)
@@ -215,6 +229,8 @@ class PPO(object):
                 v = 0
             else:
                 _, v, _ = self.get_train_action(torch.as_tensor(new_obs, dtype=torch.float32).to(self.ac_device))
+                if self.use_targ_v:
+                    v = self.ac_targ.v(torch.as_tensor(new_obs, dtype=torch.float32).to(self.ac_device))
             self.buf.finish_path(v)
 
             self.obs = None
@@ -224,8 +240,13 @@ class PPO(object):
             self.logp = None
         else:
             self.act, self.v, self.logp = self.ac.step(torch.as_tensor(new_obs, dtype=torch.float32).to(self.ac_device))
+            if self.use_targ_v:
+                self.v = self.ac_targ.v(torch.as_tensor(new_obs, dtype=torch.float32).to(self.ac_device))
             self.obs = new_obs
             self.obs_timestamp = info['obs_datetime']
+            # print(self.ac.pi.log_std)
+            # if np.sum(np.abs(self.act) > 1) != 0:
+            #     print("{}: {}".format(np.sum(np.abs(self.act) > 1), np.abs(self.act).max()))
 
         if self.buf.ptr == self.steps_per_epoch:
             logger = self.update(logger)
@@ -249,6 +270,14 @@ class PPO(object):
                 break
             loss_pi.backward()
             self.pi_optimizer.step()
+
+        # Finally, update target networks by polyak averaging.
+        with torch.no_grad():
+            for p, p_targ in zip(self.ac.parameters(), self.ac_targ.parameters()):
+                # NB: We use an in-place operations "mul_", "add_" to update target
+                # params, as opposed to "mul" and "add", which would make new tensors.
+                p_targ.data.mul_(self.polyak)
+                p_targ.data.add_((1 - self.polyak) * p.data)
 
         logger.store(StopIter=i)
 
