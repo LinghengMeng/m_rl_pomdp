@@ -189,7 +189,9 @@ class ExperienceTableOperator:
                 # the appended experiences will not be used at all, but is just for match the data size for concatenation.
                 if len(tmp_multistep_df) != len(batch_idxs):
                     for _ in range(len(batch_idxs)-len(tmp_multistep_df)):
-                        tmp_multistep_df = tmp_multistep_df.append(multistep_df_list[step_i-1].iloc[-1])
+                        # import pdb; pdb.set_trace()
+                        # tmp_multistep_df = tmp_multistep_df.append(multistep_df_list[step_i-1].iloc[-1])
+                        tmp_multistep_df = pd.concat([tmp_multistep_df, pd.DataFrame([multistep_df_list[step_i-1].iloc[-1]])])
                     tmp_multistep_df.reset_index(inplace=True, drop=True)    # Drop the pd index
                 multistep_df_list.append(tmp_multistep_df)
             # Concatenate multisteps
@@ -442,6 +444,7 @@ class DatabaseManager:
                     db_disk_conn.execute(line)
         db_disk_conn.commit()   # Commit
         db_disk_conn.close()    # Close the database connection
+
 
     def save_mem_checkpoint(self, time_step):
         if self.local_db_config['database'] is None:

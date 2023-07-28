@@ -7,12 +7,11 @@ Environment is the place where intrinsic and extrinsic motivations can be define
 the interface where an agent can interact with the external environment.
 
 """
-import gym
+import gymnasium as gym
 import numpy as np
 from datetime import datetime
 import collections
 from m_rl.envs.env import make_gym_task
-# from pl.envs.extl_env import make_bullet_task
 
 
 class IntlEnv(gym.Wrapper):
@@ -23,10 +22,8 @@ class IntlEnv(gym.Wrapper):
         super(IntlEnv, self).__init__(make_gym_task(env_id, dp_type=env_dp_type,
                                                     render_width=render_width, render_height=render_height,
                                                     obs_tile_num=obs_tile_num, obs_tile_value=obs_tile_value))
-        # self.env = make_bullet_task(env_id, dp_type=env_dp_type, render_width=render_width, render_height=render_height)  # used to simulate external world
-        self.fps = self.env.fps
-        self.env.seed(seed)
-
+        self.seed = seed
+        self._max_episode_steps = self.env._max_episode_steps
         # Action transformation
         self.act_transform_type = act_transform_type
 
@@ -73,7 +70,7 @@ class IntlEnv(gym.Wrapper):
 
         # Interact with environment
         act_ts = datetime.now()  # Action execution timestamp
-        obs2, orig_rew, done, info = self.env.step(act)
+        obs2, orig_rew, terminated, truncated,  info = self.env.step(act)
         new_obs_ts = datetime.now()
 
         # Observation delay
@@ -98,7 +95,7 @@ class IntlEnv(gym.Wrapper):
         info['act_datetime'] = act_ts
         info['obs_datetime'] = new_obs_ts
         info['orig_rew'] = orig_rew
-        return obs2, extl_rew, done, info
+        return obs2, extl_rew, terminated, truncated, info
 
     def reset(self):
         # Empty episode memory
@@ -112,12 +109,12 @@ class IntlEnv(gym.Wrapper):
             self.rew_delay_queue.clear()
 
         #
-        self.obs = self.env.reset()
+        self.obs, info = self.env.reset(self.seed)
         obs_ts = datetime.now()
 
         # No need to delay the first observation, because it's not a consequence of an action given by the agent
 
-        info = {'obs_datetime': obs_ts}
+        info['obs_datetime'] = obs_ts
         return self.obs, info
 
 

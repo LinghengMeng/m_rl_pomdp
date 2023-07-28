@@ -2,9 +2,6 @@ import numpy as np
 from copy import deepcopy
 import torch
 from torch.optim import Adam
-import gym
-# import pybulletgym
-import pybullet_envs
 import time
 import m_rl.agents.ppo.core as core
 from m_rl.utils.logx import EpochLogger, setup_logger_kwargs
