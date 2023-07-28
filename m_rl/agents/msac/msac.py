@@ -4,7 +4,6 @@ import itertools
 import numpy as np
 import torch
 from torch.optim import Adam
-import gym
 import time
 import m_rl.agents.sac.core as core
 from m_rl.agents.sac.core import MLPActorCritic, combined_shape, count_vars

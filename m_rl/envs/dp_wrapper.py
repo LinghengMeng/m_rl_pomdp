@@ -1,12 +1,12 @@
 import collections
-
 import numpy as np
-import gym
+import gymnasium as gym
 
 
 class DecisionProcessWrapper(gym.ObservationWrapper):
     """
     DecisionProcessWrapper takes environment name, dp_type, and dp_type related hyper-parameters to decide the type of the decision process.
+    (Note: call gym.pprint_registry() to print the whole registry in gymnasium.)
     """
     def __init__(self, env_name, dp_type='MDP',
                  flicker_prob=0.2, random_noise_sigma=0.1, random_sensor_missing_prob=0.1, obs_tile_num=1, obs_tile_value=None):
@@ -28,12 +28,13 @@ class DecisionProcessWrapper(gym.ObservationWrapper):
 
         """
         super().__init__(gym.make(env_name))
-        self.dp_type = dp_type.upper()
+        self.dp_type = dp_type
         self.flicker_prob = flicker_prob
         self.random_noise_sigma = random_noise_sigma
         self.random_sensor_missing_prob = random_sensor_missing_prob
         self.obs_tile_num = obs_tile_num
         self.obs_tile_value = obs_tile_value
+        self._max_episode_steps = self.env._max_episode_steps
 
         if self.dp_type == 'MDP':
             pass
@@ -130,7 +131,9 @@ class DecisionProcessWrapper(gym.ObservationWrapper):
             # Random noise
             new_obs = (obs + np.random.normal(0, self.random_noise_sigma, obs.shape)).flatten()
         else:
-            raise ValueError("pomdp_type was not in ['POMDP-RV', 'POMDP-FLK', 'POMDP-RN', 'POMDP-RSM']!")
+            raise ValueError("pomdp_type was not in ['MDP','POMDP-RV','POMDP-FLK','POMDP-RN','POMDP-RSM',"
+                             "'POMDP-RV_and_POMDP-FLK','POMDP-RV_and_POMDP-RN','POMDP-RV_and_POMDP-RSM',"
+                             "'POMDP-FLK_and_POMDP-RN','POMDP-RN_and_POMDP-RSM','POMDP-RSM_and_POMDP-RN']!")
 
         # Add tile observation to test unbalanced observation space and action space
         if self.obs_tile_num > 1:
@@ -144,100 +147,33 @@ class DecisionProcessWrapper(gym.ObservationWrapper):
     def _remove_velocity(self, env_name):
         # OpenAIGym
         #  1. Classic Control
-        if env_name == "Pendulum-v0":
-            remain_obs_idx = np.arange(0, 2)
-        elif env_name == "Acrobot-v1":
-            remain_obs_idx = list(np.arange(0, 4))
+        if env_name == "Pendulum-v1":
+            remain_obs_idx = np.arange(0, 2)          # angular velocity entry id: 2 (https://gymnasium.farama.org/environments/classic_control/pendulum/)
         elif env_name == "MountainCarContinuous-v0":
-            remain_obs_idx = list([0])
+            remain_obs_idx = list([0])                # angular velocity entry id: 1 (https://gymnasium.farama.org/environments/classic_control/mountain_car_continuous/)
         #  1. MuJoCo
-        elif env_name == "HalfCheetah-v3" or env_name == "HalfCheetah-v2":
-            remain_obs_idx = np.arange(0, 8)
-        elif env_name == "Ant-v3" or env_name == "Ant-v2":
-            remain_obs_idx = list(np.arange(0, 13)) + list(np.arange(27, 111))
-        elif env_name == 'Walker2d-v3' or env_name == "Walker2d-v2":
-            remain_obs_idx = np.arange(0, 8)
-        elif env_name == 'Hopper-v3' or env_name == "Hopper-v2":
-            remain_obs_idx = np.arange(0, 5)
-        elif env_name == "InvertedPendulum-v2":
-            remain_obs_idx = np.arange(0, 2)
-        elif env_name == "InvertedDoublePendulum-v2":
-            remain_obs_idx = list(np.arange(0, 5)) + list(np.arange(8, 11))
-        elif env_name == "Swimmer-v3" or env_name == "Swimmer-v2":
-            remain_obs_idx = np.arange(0, 3)
-        elif env_name == "Thrower-v2":
-            remain_obs_idx = list(np.arange(0, 7)) + list(np.arange(14, 23))
-        elif env_name == "Striker-v2":
-            remain_obs_idx = list(np.arange(0, 7)) + list(np.arange(14, 23))
-        elif env_name == "Pusher-v2":
-            remain_obs_idx = list(np.arange(0, 7)) + list(np.arange(14, 23))
-        elif env_name == "Reacher-v2":
-            remain_obs_idx = list(np.arange(0, 6)) + list(np.arange(8, 11))
-        elif env_name == 'Humanoid-v3' or env_name == "Humanoid-v2":
-            remain_obs_idx = list(np.arange(0, 22)) + list(np.arange(45, 185)) + list(np.arange(269, 376))
-        elif env_name == 'HumanoidStandup-v2':
-            remain_obs_idx = list(np.arange(0, 22)) + list(np.arange(45, 185)) + list(np.arange(269, 376))
-        # PyBulletEnv:
-        #   The following is not implemented:
-        #       HumanoidDeepMimicBulletEnv - v1
-        #       CartPoleBulletEnv - v1
-        #       MinitaurBulletEnv - v0
-        #       MinitaurBulletDuckEnv - v0
-        #       RacecarBulletEnv - v0
-        #       RacecarZedBulletEnv - v0
-        #       KukaBulletEnv - v0
-        #       KukaCamBulletEnv - v0
-        #       PusherBulletEnv - v0
-        #       ThrowerBulletEnv - v0
-        #       StrikerBulletEnv - v0
-        #       HumanoidBulletEnv - v0
-        #       HumanoidFlagrunBulletEnv - v0
-        #       HumanoidFlagrunHarderBulletEnv - v0
-        elif env_name == 'HalfCheetahBulletEnv-v0':
-            remain_obs_idx = list(set(np.arange(0, 26)) - set(np.arange(3, 6)))
-        elif env_name == 'AntBulletEnv-v0':
-            remain_obs_idx = list(set(np.arange(0, 28)) - set(np.arange(3, 6)))
-        elif env_name == 'HopperBulletEnv-v0':
-            remain_obs_idx = list(set(np.arange(0, 15)) - set(np.arange(3, 6)))
-        elif env_name == 'Walker2DBulletEnv-v0':
-            remain_obs_idx = list(set(np.arange(0, 22)) - set(np.arange(3, 6)))
-        elif env_name == 'InvertedPendulumBulletEnv-v0':
-            remain_obs_idx = list(set(np.arange(0, 5)) - set([1, 4]))
-        elif env_name == 'InvertedDoublePendulumBulletEnv-v0':
-            remain_obs_idx = list(set(np.arange(0, 9)) - set([1, 5, 8]))
-        elif env_name == 'InvertedPendulumSwingupBulletEnv-v0':
-            pass
-        elif env_name == 'ReacherBulletEnv-v0':
-            remain_obs_idx = list(set(np.arange(0, 9)) - set([6, 8]))
-        # PyBulletGym
-        #  1. MuJoCo
-        elif env_name == 'HalfCheetahMuJoCoEnv-v0':
-            remain_obs_idx = np.arange(0, 8)
-        elif env_name == 'AntMuJoCoEnv-v0':
-            remain_obs_idx = list(np.arange(0, 13)) + list(np.arange(27, 111))
-        elif env_name == 'Walker2DMuJoCoEnv-v0':
-            remain_obs_idx = np.arange(0, 8)
-        elif env_name == 'HopperMuJoCoEnv-v0':
-            remain_obs_idx = np.arange(0, 7)
-        elif env_name == 'InvertedPendulumMuJoCoEnv-v0':
-            remain_obs_idx = np.arange(0, 3)
-        elif env_name == 'InvertedDoublePendulumMuJoCoEnv-v0':
-            remain_obs_idx = list(np.arange(0, 5)) + list(np.arange(8, 11))
-        #  2. Roboschool
-        elif env_name == 'HalfCheetahPyBulletEnv-v0':
-            remain_obs_idx = list(set(np.arange(0, 26)) - set(np.arange(3, 6)))
-        elif env_name == 'AntPyBulletEnv-v0':
-            remain_obs_idx = list(set(np.arange(0, 28)) - set(np.arange(3, 6)))
-        elif env_name == 'Walker2DPyBulletEnv-v0':
-            remain_obs_idx = list(set(np.arange(0, 22)) - set(np.arange(3, 6)))
-        elif env_name == 'HopperPyBulletEnv-v0':
-            remain_obs_idx = list(set(np.arange(0, 15)) - set(np.arange(3, 6)))
-        elif env_name == 'InvertedPendulumPyBulletEnv-v0':
-            remain_obs_idx = list(set(np.arange(0, 5)) - set([1, 4]))
-        elif env_name == 'InvertedDoublePendulumPyBulletEnv-v0':
-            remain_obs_idx = list(set(np.arange(0, 9)) - set([1, 5, 8]))
-        elif env_name == 'ReacherPyBulletEnv-v0':
-            remain_obs_idx = list(set(np.arange(0, 9)) - set([6, 8]))
+        elif env_name == "HalfCheetah-v4":
+            remain_obs_idx = list(np.arange(0, 4)) + list(np.arange(8, 13))  # angular velocity entry id: 4,5,6,7,13,14,15,16 (https://gymnasium.farama.org/environments/mujoco/half_cheetah/)
+        elif env_name == "Ant-v4":
+            remain_obs_idx = list(np.arange(0, 13))                          # angular velocity entry id: 13-26 (https://gymnasium.farama.org/environments/mujoco/ant/)
+        elif env_name == 'Walker2d-v4':
+            remain_obs_idx = np.arange(0, 8)                                 # angular velocity entry id: 8-16 (https://gymnasium.farama.org/environments/mujoco/walker2d/)
+        elif env_name == 'Hopper-v4':
+            remain_obs_idx = np.arange(0, 5)                                 # angular velocity entry id: 5-10（https://gymnasium.farama.org/environments/mujoco/hopper/）
+        elif env_name == "InvertedPendulum-v4":
+            remain_obs_idx = np.arange(0, 2)                                 # angular velocity entry id: 2,3 (https://gymnasium.farama.org/environments/mujoco/inverted_pendulum/)
+        elif env_name == "InvertedDoublePendulum-v4":
+            remain_obs_idx = list(np.arange(0, 5)) + list(np.arange(8, 11))  # angular velocity entry id: 5-7 (https://gymnasium.farama.org/environments/mujoco/inverted_double_pendulum/)
+        elif env_name == "Swimmer-v4":
+            remain_obs_idx = np.arange(0, 3)                                 # angular velocity entry id: 3-7 (https://gymnasium.farama.org/environments/mujoco/swimmer/)
+        elif env_name == "Pusher-v4":
+            remain_obs_idx = list(np.arange(0, 7)) + list(np.arange(14, 23)) # angular velocity entry id: 7-13 (https://gymnasium.farama.org/environments/mujoco/pusher/)
+        elif env_name == "Reacher-v4":
+            remain_obs_idx = list(np.arange(0, 6)) + list(np.arange(8, 11))  # angular velocity entry id: 6,7 (https://gymnasium.farama.org/environments/mujoco/reacher/)
+        elif env_name == 'Humanoid-v4':
+            remain_obs_idx = list(np.arange(0, 22)) + list(np.arange(45, 185)) + list(np.arange(269, 376)) # angular velocity entry id: 22-44, 185-268 (https://gymnasium.farama.org/environments/mujoco/humanoid/)
+        elif env_name == 'HumanoidStandup-v4':
+            remain_obs_idx = list(np.arange(0, 22)) + list(np.arange(45, 185)) + list(np.arange(269, 376)) # angular velocity entry id: 22-44, 185-268 (https://gymnasium.farama.org/environments/mujoco/humanoid_standup/)
         else:
             raise ValueError('POMDP for {} is not defined!'.format(env_name))
 
@@ -247,26 +183,33 @@ class DecisionProcessWrapper(gym.ObservationWrapper):
         observation_space = gym.spaces.Box(obs_low, obs_high)
         return remain_obs_idx, observation_space
 
-    def reset(self):
-        observation = self.env.reset()
-        return self.observation(observation)
+    def reset(self, seed):
+        observation, info = self.env.reset(seed=seed)
+        return self.observation(observation), info
 
 
 if __name__ == '__main__':
-    # import pybulletgym
-    import pybullet_envs
-    import gym
 
-    env_name = "HalfCheetah-v2"  # "HalfCheetahBulletEnv-v0"
-    # dp_type = "MDP"    # 'POMDP-RN'
-    # # POMDP-FLK, POMDP-RV, POMDP-RN
-    # env = DecisionProcessWrapper(env_name, dp_type)  # Pendulum-v0    AntBulletEnv-v0    HalfCheetahBulletEnv-v0
-    # obs = env.reset()
-    # env.step(env.action_space.sample())
-    # print('action_space dim: {}'.format(env.action_space.shape[0]))
-    # print('observation_space dim: {}'.format(env.observation_space.shape[0]))
-    # print('action_space: {}'.format(env.action_space))
-    # print('observation_space: {}'.format(env.observation_space))
-    # print('obs: {}'.format(obs))
+    env_name_list = ["Pendulum-v1", "MountainCarContinuous-v0",
+                     "HalfCheetah-v4", "Ant-v4", 'Walker2d-v4', 'Hopper-v4',
+                     "InvertedPendulum-v4", "InvertedDoublePendulum-v4",
+                     "Swimmer-v4", "Pusher-v4", "Reacher-v4",
+                     'Humanoid-v4', 'HumanoidStandup-v4']
+    dp_type_list = ['MDP','POMDP-RV','POMDP-FLK','POMDP-RN','POMDP-RSM',
+                    'POMDP-RV_and_POMDP-FLK','POMDP-RV_and_POMDP-RN','POMDP-RV_and_POMDP-RSM',
+                    'POMDP-FLK_and_POMDP-RN','POMDP-RN_and_POMDP-RSM','POMDP-RSM_and_POMDP-RN']
+
+    for env_name in env_name_list:
+        print('Env name: {}'.format(env_name))
+        for dp_type in dp_type_list:
+            print('\tDecision process type: {}'.format(dp_type))
+            env = DecisionProcessWrapper(env_name, dp_type)
+            obs, info = env.reset()
+            env.step(env.action_space.sample())
+            print('\t\taction_space dim: {}'.format(env.action_space.shape[0]))
+            print('\t\tobservation_space dim: {}'.format(env.observation_space.shape[0]))
+            print('\t\taction_space: {}'.format(env.action_space))
+            print('\t\tobservation_space: {}'.format(env.observation_space))
+            print('\t\tobs_length={}'.format(len(obs)))
 
 

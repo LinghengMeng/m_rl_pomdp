@@ -2,3 +2,5 @@
 m_rl/__pycache__/
 
 *.pyc
+
+m_rl.egg-info/

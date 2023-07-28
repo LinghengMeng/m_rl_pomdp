@@ -8,11 +8,7 @@ import json
 import torch
 import numpy as np
 from time import time, sleep
-from m_rl import las_config
-from m_rl.envs.env import make_gym_task
-from m_rl.envs.env import get_timesteps_per_episode
 from m_rl.envs.gym_intl_env import IntlEnv
-from m_rl.envs.las_intl_env import LASIntlEnv
 from m_rl.agents.random_agent.random_agent import RandomAgent
 from m_rl.agents.ddpg.ddpg import DDPG
 from m_rl.agents.td3.td3 import TD3
@@ -43,21 +39,12 @@ def preference_teaching(env_id, env_dp_type,
                         update_after=1000, update_every=50, num_test_episodes=10,
                         resume_exp_dir=None, save_checkpoint_every_n_steps=10000, logger_kwargs=dict()):
 
-    # Load fixed hyper-parameters for Openai Gym tasks and for LAS-Meander
-    if env_id == "LAS-Meander":
-        # LAS-Meander has shorter maximum episode length, so some hyper-params are adapted accordingly.
-        steps_per_epoch = 100   #
-        start_steps = 100       # start_steps=200 is better than 100
-        update_after = 50       # update_after should be smaller than steps_per_epoch in order to have training log data.
-        num_test_episodes = 1
-        save_checkpoint_every_n_steps = 2 * 100
-        video_clip_length_in_seconds = 30
-    else:
-        steps_per_epoch = 4000
-        start_steps = 10000
-        update_after = 1000
-        num_test_episodes = 5  # 10
-        save_checkpoint_every_n_steps = 10000
+    # Load fixed hyper-parameters for Openai Gym tasks
+    steps_per_epoch = 4000
+    start_steps = 10000
+    update_after = 1000
+    num_test_episodes = 5  # 10
+    save_checkpoint_every_n_steps = 10000
 
     # Set data saving path
     results_output_dir = logger_kwargs['output_dir']
@@ -75,17 +62,13 @@ def preference_teaching(env_id, env_dp_type,
     #       Environment related meta data       #
     #############################################
     # Creat environment
-    if env_id == "LAS-Meander":
-        intl_env = LASIntlEnv(las_config)
-    else:
-        gym_env_obs_tile_num = gym_env_obs_tile
-        gym_env_obs_tile_value = -1
-        intl_env = IntlEnv(env_id, env_dp_type=env_dp_type, act_transform_type=env_act_transform_type, obs_delay_step=env_obs_delay_step,
-                           render_width=640, render_height=480, seed=seed,
-                           obs_tile_num=gym_env_obs_tile_num, obs_tile_value=gym_env_obs_tile_value)  # used to interact with the environment
-        save_checkpoint_every_n_steps = 1000
-
-    max_ep_len = get_timesteps_per_episode(intl_env)
+    gym_env_obs_tile_num = gym_env_obs_tile
+    gym_env_obs_tile_value = -1
+    intl_env = IntlEnv(env_id, env_dp_type=env_dp_type, act_transform_type=env_act_transform_type, obs_delay_step=env_obs_delay_step,
+                       render_width=640, render_height=480, seed=seed,
+                       obs_tile_num=gym_env_obs_tile_num, obs_tile_value=gym_env_obs_tile_value)  # used to interact with the environment
+    save_checkpoint_every_n_steps = 1000
+    max_ep_len = intl_env._max_episode_steps
 
     obs_space = intl_env.observation_space
     act_space = intl_env.action_space
@@ -235,9 +218,6 @@ def preference_teaching(env_id, env_dp_type,
     new_obs, info = intl_env.reset()
     ep_log_dict = {}
     ep_log_dict['EpLen'], ep_log_dict['EpHCRet'], ep_log_dict['EpOrigHCRet'], ep_log_dict['EpPBRet'] = 0, 0, 0, 0
-    if env_id == 'LAS-Meander':
-        ep_log_dict['EpHC_0_1Ret'], ep_log_dict['EpHC_neg_1_1Ret'] = 0, 0
-        ep_log_dict['EpHC_0_2Ret'], ep_log_dict['EpHC_neg_2_2Ret'] = 0, 0
 
     pb_rew, hc_rew, done, terminal = None, None, False, False
     steps_elapsed_after_last_checkpoint = 0
@@ -254,23 +234,19 @@ def preference_teaching(env_id, env_dp_type,
         act, logger = agent.interact(t, new_obs, pb_rew, hc_rew, done, info, terminal, logger)
 
         # Interact with the envs
-        new_obs, pb_rew, done, info = intl_env.step(act)    # pb_rew: preference-based reward learned from preference
+        new_obs, pb_rew, done, truncated, info = intl_env.step(act)    # pb_rew: preference-based reward learned from preference
         hc_rew = info['extl_rew']                           # hc_rew: handcrafted reward predefined in original task
         orig_hc_rew = info['orig_rew']
         ep_log_dict['EpLen'] += 1
         ep_log_dict['EpHCRet'] += hc_rew
         ep_log_dict['EpOrigHCRet'] += orig_hc_rew
         ep_log_dict['EpPBRet'] += pb_rew
-        if env_id == 'LAS-Meander':
-            ep_log_dict['EpHC_0_1Ret'] += info['reward_range_0_pos_1']
-            ep_log_dict['EpHC_neg_1_1Ret'] += info['reward_range_neg_1_pos_1']
-            ep_log_dict['EpHC_0_2Ret'] += info['reward_range_0_pos_2']
-            ep_log_dict['EpHC_neg_2_2Ret'] += info['reward_range_neg_2_pos_2']
 
         steps_elapsed_after_last_checkpoint += 1
 
         # End of trajectory handling
         terminal = done or (ep_log_dict['EpLen'] == max_ep_len)
+
         if terminal:
             # Call agent.interact() only for storing last experience.
             _, logger = agent.interact(t, new_obs, pb_rew, hc_rew, done, info, terminal, logger)
@@ -279,17 +255,6 @@ def preference_teaching(env_id, env_dp_type,
             logger.store(**ep_log_dict)
 
             # Reset env and logging variables
-            # Note: close old env and regenerate new env is crucial to save memory consumption on
-            #   Linux, as pybullet env continuously maintains past simulation status.
-            if env_id == "LAS-Meander":
-                ep_log_dict['EpHC_0_1Ret'], ep_log_dict['EpHC_neg_1_1Ret'] = 0, 0
-                ep_log_dict['EpHC_0_2Ret'], ep_log_dict['EpHC_neg_2_2Ret'] = 0, 0
-            else:
-                intl_env.close()
-                intl_env = IntlEnv(env_id, env_dp_type=env_dp_type, act_transform_type=env_act_transform_type, obs_delay_step=env_obs_delay_step,
-                                   render_width=640, render_height=480, seed=seed,
-                                   obs_tile_num=gym_env_obs_tile_num, obs_tile_value=gym_env_obs_tile_value)  # used to interact with the environment
-
             new_obs, info = intl_env.reset()
             ep_log_dict['EpLen'], ep_log_dict['EpHCRet'], ep_log_dict['EpOrigHCRet'], ep_log_dict['EpPBRet'] = 0, 0, 0, 0
             pb_rew, hc_rew, done, terminal = None, None, False, False
@@ -335,16 +300,12 @@ def preference_teaching(env_id, env_dp_type,
             if rl_agent == 'RandomAgent':
                 # Test the performance of the deterministic version of the agent.
                 def test_agent(agent, logger):
-                    # Crucial: pybullet env maintains variables which will not release memory if not close().
                     # Define env outside the loop, otherwise with the same seed the results will be the same.
-                    if env_id == "LAS-Meander":
-                        test_intl_env = intl_env  # For LAS-Meander, the ip and port are fixed, so only one intl_env can be created.
-                    else:
-                        test_intl_env = IntlEnv(env_id, env_dp_type=env_dp_type, act_transform_type=env_act_transform_type, obs_delay_step=env_obs_delay_step,
-                                                render_width=640, render_height=480,
-                                                seed=seed, obs_tile_num=gym_env_obs_tile_num,
-                                                obs_tile_value=gym_env_obs_tile_value)  # used to interact with the environment
-                    max_ep_len = get_timesteps_per_episode(test_intl_env)
+                    test_intl_env = IntlEnv(env_id, env_dp_type=env_dp_type, act_transform_type=env_act_transform_type, obs_delay_step=env_obs_delay_step,
+                                            render_width=640, render_height=480,
+                                            seed=seed, obs_tile_num=gym_env_obs_tile_num,
+                                            obs_tile_value=gym_env_obs_tile_value)  # used to interact with the environment
+                    max_ep_len = test_intl_env._max_episode_steps
 
                     for j in range(num_test_episodes):
                         obs, info = test_intl_env.reset()
@@ -352,14 +313,11 @@ def preference_teaching(env_id, env_dp_type,
                         test_ep_log_dict = {}
                         test_ep_log_dict['TestEpLen'], test_ep_log_dict['TestEpHCRet'], test_ep_log_dict['TestEpPBRet'] = 0, 0, 0
                         test_ep_log_dict['TestEpOrigHCRet'] = 0
-                        if env_id == 'LAS-Meander':
-                            test_ep_log_dict['TestEpHC_0_1Ret'], test_ep_log_dict['TestEpHC_neg_1_1Ret'] = 0, 0
-                            test_ep_log_dict['TestEpHC_0_2Ret'], test_ep_log_dict['TestEpHC_neg_2_2Ret'] = 0, 0
 
                         while not (done or (test_ep_log_dict['TestEpLen'] == max_ep_len)):
                             # Take deterministic actions at test time (noise_scale=0)
                             act = agent.get_test_action(obs)
-                            obs2, pb_rew, done, info = test_intl_env.step(
+                            obs2, pb_rew, done, truncated, info = test_intl_env.step(
                                 act)  # pb_rew: preference-based reward learned from preference
                             hc_rew = info['extl_rew']  # hc_rew: handcrafted reward predefined in original task
                             orig_hc_rew = info['orig_rew']
@@ -369,19 +327,10 @@ def preference_teaching(env_id, env_dp_type,
                             test_ep_log_dict['TestEpOrigHCRet'] += orig_hc_rew
                             test_ep_log_dict['TestEpPBRet'] += pb_rew
 
-                            if env_id == 'LAS-Meander':
-                                test_ep_log_dict['TestEpHC_0_1Ret'] += info['reward_range_0_pos_1']
-                                test_ep_log_dict['TestEpHC_neg_1_1Ret'] += info['reward_range_neg_1_pos_1']
-                                test_ep_log_dict['TestEpHC_0_2Ret'] += info['reward_range_0_pos_2']
-                                test_ep_log_dict['TestEpHC_neg_2_2Ret'] += info['reward_range_neg_2_pos_2']
-
                             obs = obs2
 
                         logger.store(**test_ep_log_dict)
-                    if env_id == "LAS-Meander":
-                        pass
-                    else:
-                        test_intl_env.close()
+                    test_intl_env.close()
                     return logger
 
                 logger = test_agent(agent, logger=logger)
@@ -397,30 +346,16 @@ def preference_teaching(env_id, env_dp_type,
                 logger.log_tabular('EpLen', average_only=True)
                 logger.log_tabular('TestEpLen', average_only=True)
                 logger.log_tabular('TotalEnvInteracts', t)
-                if env_id == 'LAS-Meander':
-                    logger.log_tabular('EpHC_0_1Ret', with_min_and_max=True)
-                    logger.log_tabular('EpHC_neg_1_1Ret', with_min_and_max=True)
-                    logger.log_tabular('EpHC_0_2Ret', with_min_and_max=True)
-                    logger.log_tabular('EpHC_neg_2_2Ret', with_min_and_max=True)
-
-                    logger.log_tabular('TestEpHC_0_1Ret', with_min_and_max=True)
-                    logger.log_tabular('TestEpHC_neg_1_1Ret', with_min_and_max=True)
-                    logger.log_tabular('TestEpHC_0_2Ret', with_min_and_max=True)
-                    logger.log_tabular('TestEpHC_neg_2_2Ret', with_min_and_max=True)
                 logger.log_tabular('Time', time() - start_time)
                 logger.dump_tabular()
             elif rl_agent == 'DDPG':
                 # Test the performance of the deterministic version of the agent.
                 def test_agent(agent, logger):
-                    # Crucial: pybullet env maintains variables which will not release memory if not close().
                     # Define env outside the loop, otherwise with the same seed the results will be the same.
-                    if env_id == "LAS-Meander":
-                        test_intl_env = intl_env    # For LAS-Meander, the ip and port are fixed, so only one intl_env can be created.
-                    else:
-                        test_intl_env = IntlEnv(env_id, env_dp_type=env_dp_type, act_transform_type=env_act_transform_type, obs_delay_step=env_obs_delay_step,
-                                                render_width=640, render_height=480,
-                                                seed=seed, obs_tile_num=gym_env_obs_tile_num, obs_tile_value=gym_env_obs_tile_value)  # used to interact with the environment
-                    max_ep_len = get_timesteps_per_episode(test_intl_env)
+                    test_intl_env = IntlEnv(env_id, env_dp_type=env_dp_type, act_transform_type=env_act_transform_type, obs_delay_step=env_obs_delay_step,
+                                            render_width=640, render_height=480,
+                                            seed=seed, obs_tile_num=gym_env_obs_tile_num, obs_tile_value=gym_env_obs_tile_value)  # used to interact with the environment
+                    max_ep_len = test_intl_env._max_episode_steps
 
                     for j in range(num_test_episodes):
                         obs, info = test_intl_env.reset()
@@ -428,14 +363,11 @@ def preference_teaching(env_id, env_dp_type,
                         test_ep_log_dict = {}
                         test_ep_log_dict['TestEpLen'], test_ep_log_dict['TestEpHCRet'], test_ep_log_dict['TestEpPBRet'] = 0, 0, 0
                         test_ep_log_dict['TestEpOrigHCRet'] = 0
-                        if env_id == 'LAS-Meander':
-                            test_ep_log_dict['TestEpHC_0_1Ret'], test_ep_log_dict['TestEpHC_neg_1_1Ret'] = 0, 0
-                            test_ep_log_dict['TestEpHC_0_2Ret'], test_ep_log_dict['TestEpHC_neg_2_2Ret'] = 0, 0
 
                         while not (done or (test_ep_log_dict['TestEpLen'] == max_ep_len)):
                             # Take deterministic actions at test time (noise_scale=0)
                             act = agent.get_test_action(obs)
-                            obs2, pb_rew, done, info = test_intl_env.step(
+                            obs2, pb_rew, done, truncated, info = test_intl_env.step(
                                 act)  # pb_rew: preference-based reward learned from preference
                             hc_rew = info['extl_rew']  # hc_rew: handcrafted reward predefined in original task
                             orig_hc_rew = info['orig_rew']
@@ -445,19 +377,10 @@ def preference_teaching(env_id, env_dp_type,
                             test_ep_log_dict['TestEpOrigHCRet'] += orig_hc_rew
                             test_ep_log_dict['TestEpPBRet'] += pb_rew
 
-                            if env_id == 'LAS-Meander':
-                                test_ep_log_dict['TestEpHC_0_1Ret'] += info['reward_range_0_pos_1']
-                                test_ep_log_dict['TestEpHC_neg_1_1Ret'] += info['reward_range_neg_1_pos_1']
-                                test_ep_log_dict['TestEpHC_0_2Ret'] += info['reward_range_0_pos_2']
-                                test_ep_log_dict['TestEpHC_neg_2_2Ret'] += info['reward_range_neg_2_pos_2']
-
                             obs = obs2
 
                         logger.store(**test_ep_log_dict)
-                    if env_id == "LAS-Meander":
-                        pass
-                    else:
-                        test_intl_env.close()
+                    test_intl_env.close()
                     return logger
                 logger = test_agent(agent, logger=logger)
 
@@ -472,16 +395,6 @@ def preference_teaching(env_id, env_dp_type,
                 logger.log_tabular('EpLen', average_only=True)
                 logger.log_tabular('TestEpLen', average_only=True)
                 logger.log_tabular('TotalEnvInteracts', t)
-                if env_id == 'LAS-Meander':
-                    logger.log_tabular('EpHC_0_1Ret', with_min_and_max=True)
-                    logger.log_tabular('EpHC_neg_1_1Ret', with_min_and_max=True)
-                    logger.log_tabular('EpHC_0_2Ret', with_min_and_max=True)
-                    logger.log_tabular('EpHC_neg_2_2Ret', with_min_and_max=True)
-
-                    logger.log_tabular('TestEpHC_0_1Ret', with_min_and_max=True)
-                    logger.log_tabular('TestEpHC_neg_1_1Ret', with_min_and_max=True)
-                    logger.log_tabular('TestEpHC_0_2Ret', with_min_and_max=True)
-                    logger.log_tabular('TestEpHC_neg_2_2Ret', with_min_and_max=True)
                 logger.log_tabular('QVals', with_min_and_max=True)
                 logger.log_tabular('LossPi', average_only=True)
                 logger.log_tabular('LossQ', average_only=True)
@@ -490,16 +403,11 @@ def preference_teaching(env_id, env_dp_type,
             elif rl_agent == 'TD3' or rl_agent == 'MTD3':
                 # Test the performance of the deterministic version of the agent.
                 def test_agent(agent, logger):
-                    # Crucial: pybullet env maintains variables which will not release memory if not close().
                     # Define env outside the loop, otherwise with the same seed the results will be the same.
-                    if env_id == "LAS-Meander":
-                        test_intl_env = intl_env    # For LAS-Meander, the ip and port are fixed, so only one intl_env can be created.
-
-                    else:
-                        test_intl_env = IntlEnv(env_id, env_dp_type=env_dp_type, act_transform_type=env_act_transform_type, obs_delay_step=env_obs_delay_step,
-                                                render_width=640, render_height=480,
-                                                seed=seed, obs_tile_num=gym_env_obs_tile_num, obs_tile_value=gym_env_obs_tile_value)  # used to interact with the environment
-                    max_ep_len = get_timesteps_per_episode(test_intl_env)
+                    test_intl_env = IntlEnv(env_id, env_dp_type=env_dp_type, act_transform_type=env_act_transform_type, obs_delay_step=env_obs_delay_step,
+                                            render_width=640, render_height=480,
+                                            seed=seed, obs_tile_num=gym_env_obs_tile_num, obs_tile_value=gym_env_obs_tile_value)  # used to interact with the environment
+                    max_ep_len = test_intl_env._max_episode_steps
 
                     for j in range(num_test_episodes):
                         obs, info = test_intl_env.reset()
@@ -507,14 +415,11 @@ def preference_teaching(env_id, env_dp_type,
                         test_ep_log_dict = {}
                         test_ep_log_dict['TestEpLen'], test_ep_log_dict['TestEpHCRet'], test_ep_log_dict['TestEpPBRet'] = 0, 0, 0
                         test_ep_log_dict['TestEpOrigHCRet'] = 0
-                        if env_id == 'LAS-Meander':
-                            test_ep_log_dict['TestEpHC_0_1Ret'], test_ep_log_dict['TestEpHC_neg_1_1Ret'] = 0, 0
-                            test_ep_log_dict['TestEpHC_0_2Ret'], test_ep_log_dict['TestEpHC_neg_2_2Ret'] = 0, 0
 
                         while not (done or (test_ep_log_dict['TestEpLen'] == max_ep_len)):
                             # Take deterministic actions at test time (noise_scale=0)
                             act = agent.get_test_action(obs)
-                            obs2, pb_rew, done, info = test_intl_env.step(act)  # pb_rew: preference-based reward learned from preference
+                            obs2, pb_rew, done, truncated, info = test_intl_env.step(act)  # pb_rew: preference-based reward learned from preference
                             hc_rew = info['extl_rew']  # hc_rew: handcrafted reward predefined in original task
                             orig_hc_rew = info['orig_rew']
 
@@ -522,19 +427,11 @@ def preference_teaching(env_id, env_dp_type,
                             test_ep_log_dict['TestEpHCRet'] += hc_rew
                             test_ep_log_dict['TestEpOrigHCRet'] += orig_hc_rew
                             test_ep_log_dict['TestEpPBRet'] += pb_rew
-                            if env_id == 'LAS-Meander':
-                                test_ep_log_dict['TestEpHC_0_1Ret'] += info['reward_range_0_pos_1']
-                                test_ep_log_dict['TestEpHC_neg_1_1Ret'] += info['reward_range_neg_1_pos_1']
-                                test_ep_log_dict['TestEpHC_0_2Ret'] += info['reward_range_0_pos_2']
-                                test_ep_log_dict['TestEpHC_neg_2_2Ret'] += info['reward_range_neg_2_pos_2']
 
                             obs = obs2
 
                         logger.store(**test_ep_log_dict)
-                    if env_id == "LAS-Meander":
-                        pass
-                    else:
-                        test_intl_env.close()
+                    test_intl_env.close()
                     return logger
                 logger = test_agent(agent, logger=logger)
 
@@ -549,18 +446,6 @@ def preference_teaching(env_id, env_dp_type,
                 logger.log_tabular('EpLen', average_only=True)
                 logger.log_tabular('TestEpLen', average_only=True)
                 logger.log_tabular('TotalEnvInteracts', t)
-
-                if env_id == 'LAS-Meander':
-                    logger.log_tabular('EpHC_0_1Ret', with_min_and_max=True)
-                    logger.log_tabular('EpHC_neg_1_1Ret', with_min_and_max=True)
-                    logger.log_tabular('EpHC_0_2Ret', with_min_and_max=True)
-                    logger.log_tabular('EpHC_neg_2_2Ret', with_min_and_max=True)
-
-                    logger.log_tabular('TestEpHC_0_1Ret', with_min_and_max=True)
-                    logger.log_tabular('TestEpHC_neg_1_1Ret', with_min_and_max=True)
-                    logger.log_tabular('TestEpHC_0_2Ret', with_min_and_max=True)
-                    logger.log_tabular('TestEpHC_neg_2_2Ret', with_min_and_max=True)
-
                 logger.log_tabular('Q1Vals', with_min_and_max=True)
                 logger.log_tabular('Q2Vals', with_min_and_max=True)
                 logger.log_tabular('LossPi', average_only=True)
@@ -569,15 +454,11 @@ def preference_teaching(env_id, env_dp_type,
                 logger.dump_tabular()
             elif rl_agent == 'SAC' or rl_agent == 'MSAC':
                 def test_agent(agent, logger):
-                    # Crucial: pybullet env maintains variables which will not release memory if not close().
                     # Define env outside the loop, otherwise with the same seed the results will be the same.
-                    if env_id == "LAS-Meander":
-                        test_intl_env = intl_env  # For LAS-Meander, the ip and port are fixed, so only one intl_env can be created.
-                    else:
-                        test_intl_env = IntlEnv(env_id, env_dp_type=env_dp_type, act_transform_type=env_act_transform_type, obs_delay_step=env_obs_delay_step,
-                                                render_width=640, render_height=480,
-                                                seed=seed, obs_tile_num=gym_env_obs_tile_num, obs_tile_value=gym_env_obs_tile_value)  # used to interact with the environment
-                    max_ep_len = get_timesteps_per_episode(test_intl_env)
+                    test_intl_env = IntlEnv(env_id, env_dp_type=env_dp_type, act_transform_type=env_act_transform_type, obs_delay_step=env_obs_delay_step,
+                                            render_width=640, render_height=480,
+                                            seed=seed, obs_tile_num=gym_env_obs_tile_num, obs_tile_value=gym_env_obs_tile_value)  # used to interact with the environment
+                    max_ep_len = test_intl_env._max_episode_steps
 
                     for j in range(num_test_episodes):
                         obs, info = test_intl_env.reset()
@@ -585,14 +466,11 @@ def preference_teaching(env_id, env_dp_type,
                         test_ep_log_dict = {}
                         test_ep_log_dict['TestEpLen'], test_ep_log_dict['TestEpHCRet'], test_ep_log_dict['TestEpPBRet'] = 0, 0, 0
                         test_ep_log_dict['TestEpOrigHCRet'] = 0
-                        if env_id == 'LAS-Meander':
-                            test_ep_log_dict['TestEpHC_0_1Ret'], test_ep_log_dict['TestEpHC_neg_1_1Ret'] = 0, 0
-                            test_ep_log_dict['TestEpHC_0_2Ret'], test_ep_log_dict['TestEpHC_neg_2_2Ret'] = 0, 0
 
                         while not (done or (test_ep_log_dict['TestEpLen'] == max_ep_len)):
                             # Take deterministic actions at test time (noise_scale=0)
                             act = agent.get_test_action(obs)
-                            obs2, pb_rew, done, info = test_intl_env.step(act)  # pb_rew: preference-based reward learned from preference
+                            obs2, pb_rew, done, truncated, info = test_intl_env.step(act)  # pb_rew: preference-based reward learned from preference
                             hc_rew = info['extl_rew']  # hc_rew: handcrafted reward predefined in original task
                             orig_hc_rew = info['orig_rew']
 
@@ -600,18 +478,10 @@ def preference_teaching(env_id, env_dp_type,
                             test_ep_log_dict['TestEpHCRet'] += hc_rew
                             test_ep_log_dict['TestEpOrigHCRet'] += orig_hc_rew
                             test_ep_log_dict['TestEpPBRet'] += pb_rew
-                            if env_id == 'LAS-Meander':
-                                test_ep_log_dict['TestEpHC_0_1Ret'] += info['reward_range_0_pos_1']
-                                test_ep_log_dict['TestEpHC_neg_1_1Ret'] += info['reward_range_neg_1_pos_1']
-                                test_ep_log_dict['TestEpHC_0_2Ret'] += info['reward_range_0_pos_2']
-                                test_ep_log_dict['TestEpHC_neg_2_2Ret'] += info['reward_range_neg_2_pos_2']
 
                             obs = obs2
                         logger.store(**test_ep_log_dict)
-                    if env_id == "LAS-Meander":
-                        pass
-                    else:
-                        test_intl_env.close()
+                    test_intl_env.close()
                     return logger
 
                 logger = test_agent(agent, logger=logger)
@@ -626,16 +496,6 @@ def preference_teaching(env_id, env_dp_type,
                 logger.log_tabular('EpLen', average_only=True)
                 logger.log_tabular('TestEpLen', average_only=True)
                 logger.log_tabular('TotalEnvInteracts', t)
-                if env_id == 'LAS-Meander':
-                    logger.log_tabular('EpHC_0_1Ret', with_min_and_max=True)
-                    logger.log_tabular('EpHC_neg_1_1Ret', with_min_and_max=True)
-                    logger.log_tabular('EpHC_0_2Ret', with_min_and_max=True)
-                    logger.log_tabular('EpHC_neg_2_2Ret', with_min_and_max=True)
-
-                    logger.log_tabular('TestEpHC_0_1Ret', with_min_and_max=True)
-                    logger.log_tabular('TestEpHC_neg_1_1Ret', with_min_and_max=True)
-                    logger.log_tabular('TestEpHC_0_2Ret', with_min_and_max=True)
-                    logger.log_tabular('TestEpHC_neg_2_2Ret', with_min_and_max=True)
                 logger.log_tabular('Q1Vals', with_min_and_max=True)
                 logger.log_tabular('Q2Vals', with_min_and_max=True)
                 logger.log_tabular('LogPi', with_min_and_max=True)
@@ -650,11 +510,6 @@ def preference_teaching(env_id, env_dp_type,
                 logger.log_tabular('EpOrigHCRet', with_min_and_max=True)
                 logger.log_tabular('EpPBRet', with_min_and_max=True)
                 logger.log_tabular('EpLen', average_only=True)
-                if env_id == 'LAS-Meander':
-                    logger.log_tabular('EpHC_0_1Ret', with_min_and_max=True)
-                    logger.log_tabular('EpHC_neg_1_1Ret', with_min_and_max=True)
-                    logger.log_tabular('EpHC_0_2Ret', with_min_and_max=True)
-                    logger.log_tabular('EpHC_neg_2_2Ret', with_min_and_max=True)
                 logger.log_tabular('VVals', with_min_and_max=True)
                 logger.log_tabular('TotalEnvInteracts', t)
                 logger.log_tabular('LossPi', average_only=True)
@@ -669,16 +524,12 @@ def preference_teaching(env_id, env_dp_type,
                 logger.dump_tabular()
             elif rl_agent == 'LSTM-TD3' or rl_agent == 'LSTM-MTD3':
                 def test_agent(agent, logger):
-                    # Crucial: pybullet env maintains variables which will not release memory if not close().
                     # Define env outside the loop, otherwise with the same seed the results will be the same.
-                    if env_id == "LAS-Meander":
-                        test_intl_env = intl_env  # For LAS-Meander, the ip and port are fixed, so only one intl_env can be created.
-                    else:
-                        test_intl_env = IntlEnv(env_id, env_dp_type=env_dp_type, act_transform_type=env_act_transform_type, obs_delay_step=env_obs_delay_step,
-                                                render_width=640, render_height=480,
-                                                seed=seed, obs_tile_num=gym_env_obs_tile_num,
-                                                obs_tile_value=gym_env_obs_tile_value)  # used to interact with the environment
-                    max_ep_len = get_timesteps_per_episode(test_intl_env)
+                    test_intl_env = IntlEnv(env_id, env_dp_type=env_dp_type, act_transform_type=env_act_transform_type, obs_delay_step=env_obs_delay_step,
+                                            render_width=640, render_height=480,
+                                            seed=seed, obs_tile_num=gym_env_obs_tile_num,
+                                            obs_tile_value=gym_env_obs_tile_value)  # used to interact with the environment
+                    max_ep_len = test_intl_env._max_episode_steps
 
                     for j in range(num_test_episodes):
                         obs, info = test_intl_env.reset()
@@ -686,9 +537,6 @@ def preference_teaching(env_id, env_dp_type,
                         test_ep_log_dict = {}
                         test_ep_log_dict['TestEpLen'], test_ep_log_dict['TestEpHCRet'], test_ep_log_dict['TestEpPBRet'] = 0, 0, 0
                         test_ep_log_dict['TestEpOrigHCRet'] = 0
-                        if env_id == 'LAS-Meander':
-                            test_ep_log_dict['TestEpHC_0_1Ret'], test_ep_log_dict['TestEpHC_neg_1_1Ret'] = 0, 0
-                            test_ep_log_dict['TestEpHC_0_2Ret'], test_ep_log_dict['TestEpHC_neg_2_2Ret'] = 0, 0
 
                         if agent_mem_len > 0:
                             o_buff = np.zeros([agent_mem_len, obs_dim])
@@ -703,7 +551,7 @@ def preference_teaching(env_id, env_dp_type,
                         while not (done or (test_ep_log_dict['TestEpLen'] == max_ep_len)):
                             # Take deterministic actions at test time (noise_scale=0)
                             act = agent.get_test_action(obs, o_buff, a_buff, o_buff_len)
-                            obs2, pb_rew, done, info = test_intl_env.step(
+                            obs2, pb_rew, done, truncated, info = test_intl_env.step(
                                 act)  # pb_rew: preference-based reward learned from preference
                             hc_rew = info['extl_rew']  # hc_rew: handcrafted reward predefined in original task
                             orig_hc_rew = info['orig_rew']
@@ -712,11 +560,6 @@ def preference_teaching(env_id, env_dp_type,
                             test_ep_log_dict['TestEpHCRet'] += hc_rew
                             test_ep_log_dict['TestEpOrigHCRet'] += orig_hc_rew
                             test_ep_log_dict['TestEpPBRet'] += pb_rew
-                            if env_id == 'LAS-Meander':
-                                test_ep_log_dict['TestEpHC_0_1Ret'] += info['reward_range_0_pos_1']
-                                test_ep_log_dict['TestEpHC_neg_1_1Ret'] += info['reward_range_neg_1_pos_1']
-                                test_ep_log_dict['TestEpHC_0_2Ret'] += info['reward_range_0_pos_2']
-                                test_ep_log_dict['TestEpHC_neg_2_2Ret'] += info['reward_range_neg_2_pos_2']
 
                             # Add short history
                             if agent_mem_len != 0:
@@ -733,10 +576,7 @@ def preference_teaching(env_id, env_dp_type,
                             obs = obs2
 
                         logger.store(**test_ep_log_dict)
-                    if env_id == "LAS-Meander":
-                        pass
-                    else:
-                        test_intl_env.close()
+                    test_intl_env.close()
                     return logger
                 logger = test_agent(agent, logger=logger)
 
@@ -751,18 +591,6 @@ def preference_teaching(env_id, env_dp_type,
                 logger.log_tabular('EpLen', average_only=True)
                 logger.log_tabular('TestEpLen', average_only=True)
                 logger.log_tabular('TotalEnvInteracts', t)
-
-                if env_id == 'LAS-Meander':
-                    logger.log_tabular('EpHC_0_1Ret', with_min_and_max=True)
-                    logger.log_tabular('EpHC_neg_1_1Ret', with_min_and_max=True)
-                    logger.log_tabular('EpHC_0_2Ret', with_min_and_max=True)
-                    logger.log_tabular('EpHC_neg_2_2Ret', with_min_and_max=True)
-
-                    logger.log_tabular('TestEpHC_0_1Ret', with_min_and_max=True)
-                    logger.log_tabular('TestEpHC_neg_1_1Ret', with_min_and_max=True)
-                    logger.log_tabular('TestEpHC_0_2Ret', with_min_and_max=True)
-                    logger.log_tabular('TestEpHC_neg_2_2Ret', with_min_and_max=True)
-
                 logger.log_tabular('Q1Vals', with_min_and_max=True)
                 logger.log_tabular('Q2Vals', with_min_and_max=True)
                 logger.log_tabular('LossPi', average_only=True)
@@ -792,7 +620,7 @@ if __name__ == '__main__':
     parser.add_argument('--resume_exp_dir', type=str, default=None, help="The directory of the resuming experiment.")
 
     # Environment related hyperparams
-    parser.add_argument('--env_id', type=str, default='HalfCheetahBulletEnv-v0')
+    parser.add_argument('--env_id', type=str, default='HalfCheetah-v4')
     parser.add_argument('--env_dp_type', choices=['MDP', 'POMDP-RV', 'POMDP-FLK', 'POMDP-RN', 'POMDP-RSM'], default='MDP')
     parser.add_argument('--flicker_prob', type=float, default=0.2)
     parser.add_argument('--random_noise_sigma', type=float, default=0.1)
@@ -802,7 +630,6 @@ if __name__ == '__main__':
     parser.add_argument('--env_obs_delay_step', type=int, default=None)
     parser.add_argument('--gym_env_obs_tile', type=int, default=1, help="How many times to tile the observation (Only used in Gym tasks)")
     parser.add_argument('--stochastic_env', type=float, default=0)
-    parser.add_argument('--las_config', type=str, default='', help="Specify path to LAS config file. If empty, default configuration will be employed.")
 
     # RL-agent related hyperparams
     parser.add_argument('--rl_agent', type=str, choices=['RandomAgent', 'DDPG', 'TD3', 'MTD3', 'SAC', 'MSAC', 'PPO', 'LSTM-TD3', 'LSTM-MTD3'], default='TD3')
@@ -819,19 +646,10 @@ if __name__ == '__main__':
     parser.add_argument('--epochs', type=int, default=2000)
     parser.add_argument('--exp_name', type=str, default='td3')
 
-    parser.add_argument("--data_dir", type=str, default='F:/PL-Teaching-Data', help="Provide either absolute or relative path to "
+    parser.add_argument("--data_dir", type=str, default=r'C:\Users\lingh\Documents\sync_data\m_rl_data', help="Provide either absolute or relative path to "
                                                                                                    "the directory where data is saving to.")
 
     args = parser.parse_args()
-
-    # Load las_intl_env_config if specified.
-    if args.las_config:
-        print("las_intl_env_config is specified to {}".format(args.las_config))
-        las_config_spec = importlib.util.spec_from_file_location(las_config.__name__, args.las_config)
-        las_config = importlib.util.module_from_spec(las_config_spec)
-        las_config_spec.loader.exec_module(las_config)
-    else:
-        print("No las_intl_env_config is specified! The default configuration will be employed!")
 
     # Format hidden_sizes as a list of hidden_units
     hidden_sizes = [args.hidden_units for _ in range(args.hidden_layer)]
