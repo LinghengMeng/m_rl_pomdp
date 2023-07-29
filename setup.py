@@ -18,7 +18,7 @@ setup(
         # # 'matplotlib==3.1.1',
         # # 'mpi4py',
         # 'numpy',
-        'pandas>=2.0.3',
+        'pandas>=2.0.0',
         # # 'pytest',
         # # 'psutil',
         'scipy>=1.11.1',
