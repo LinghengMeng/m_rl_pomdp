@@ -130,7 +130,8 @@ class MLPActorCritic(nn.Module):
             a = pi.sample()
             logp_a = self.pi._log_prob_from_distribution(pi, a)
             v = self.v(obs)
-            # Important: a sampled from normal distribution may beyond the action limit.
+            # Important: a sampled from normal distribution may beyond the action limit. However, if we clamp the action
+            #      it will cause error in the calculated action probability.
             # a = torch.tanh(a)
             if self.clamp_action:
                 a = torch.clamp(a, -1, 1)

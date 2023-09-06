@@ -162,7 +162,7 @@ class PPO(object):
     def _init_actor_critic(self):
         # Set up function for computing PPO policy loss
         # Create actor-critic module
-        self.ac = core.MLPActorCritic(self.obs_space, self.act_space, self.hidden_sizes, clamp_action=True)
+        self.ac = core.MLPActorCritic(self.obs_space, self.act_space, self.hidden_sizes)
         self.ac_targ = deepcopy(self.ac)
 
         self.ac_device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
