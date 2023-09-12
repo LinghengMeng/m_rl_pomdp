@@ -174,6 +174,33 @@ class DecisionProcessWrapper(gym.ObservationWrapper):
             remain_obs_idx = list(np.arange(0, 22)) + list(np.arange(45, 185)) + list(np.arange(269, 376)) # angular velocity entry id: 22-44, 185-268 (https://gymnasium.farama.org/environments/mujoco/humanoid/)
         elif env_name == 'HumanoidStandup-v4':
             remain_obs_idx = list(np.arange(0, 22)) + list(np.arange(45, 185)) + list(np.arange(269, 376)) # angular velocity entry id: 22-44, 185-268 (https://gymnasium.farama.org/environments/mujoco/humanoid_standup/)
+        # 2. MuJoCo v2 and v3 previously developed by OpenAI Gym (verified by inspecting source code in https://github.com/openai/gym/tree/master/gym/envs/mujoco)
+        elif env_name == "HalfCheetah-v3" or env_name == "HalfCheetah-v2":
+            remain_obs_idx = list(np.arange(0, 8)) 
+        elif env_name == "Ant-v3" or env_name == "Ant-v2":
+            remain_obs_idx = list(np.arange(0, 13)) + list(np.arange(27, 111))     
+        elif env_name == 'Walker2d-v3' or env_name == "Walker2d-v2":
+            remain_obs_idx = np.arange(0, 8)                                        
+        elif env_name == 'Hopper-v3' or env_name == "Hopper-v2":
+            remain_obs_idx = np.arange(0, 5)                               
+        elif env_name == "InvertedPendulum-v2":
+            remain_obs_idx = np.arange(0, 2)                                
+        elif env_name == "InvertedDoublePendulum-v2":
+            remain_obs_idx = list(np.arange(0, 5)) + list(np.arange(8, 11))  
+        elif env_name == "Swimmer-v3" or env_name == "Swimmer-v2":
+            remain_obs_idx = np.arange(0, 3)                                
+        elif env_name == "Thrower-v2":
+            remain_obs_idx = list(np.arange(0, 7)) + list(np.arange(14, 23))
+        elif env_name == "Striker-v2":
+            remain_obs_idx = list(np.arange(0, 7)) + list(np.arange(14, 23))
+        elif env_name == "Pusher-v2":
+            remain_obs_idx = list(np.arange(0, 7)) + list(np.arange(14, 23))
+        elif env_name == "Reacher-v2":
+            remain_obs_idx = list(np.arange(0, 6)) + list(np.arange(8, 11))
+        elif env_name == 'Humanoid-v3' or env_name == "Humanoid-v2":
+            remain_obs_idx = list(np.arange(0, 22)) + list(np.arange(45, 185)) + list(np.arange(269, 376))
+        elif env_name == 'HumanoidStandup-v2':
+            remain_obs_idx = list(np.arange(0, 22)) + list(np.arange(45, 185)) + list(np.arange(269, 376))
         else:
             raise ValueError('POMDP for {} is not defined!'.format(env_name))
 
