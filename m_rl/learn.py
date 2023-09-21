@@ -125,14 +125,14 @@ def preference_teaching(env_id, env_dp_type,
                     checkpoint_dir=checkpoint_dir)
     elif rl_agent == 'SAC':
         agent = SAC(obs_space, act_space, hidden_sizes,
-                    gamma=gamma,
+                    gamma=gamma, alpha=sac_alpha,
                     start_steps=start_steps,
                     update_after=update_after,
                     mem_manager=mem_manager,
                     checkpoint_dir=checkpoint_dir)
     elif rl_agent == 'MSAC':
         agent = MSAC(obs_space, act_space, hidden_sizes,
-                    gamma=gamma,
+                    gamma=gamma, alpha=sac_alpha,
                     multistep_size=multistep_size,
                     start_steps=start_steps,
                     update_after=update_after,
@@ -638,6 +638,7 @@ if __name__ == '__main__':
     parser.add_argument('--hidden_units', type=int, default=256)
     parser.add_argument('--gamma', type=float, default=0.99)
     parser.add_argument('--td3_act_noise', type=float, default=0.1, help='Action noise of the exploratory policy of TD3, MTD3, LSTM-TD3 and LSTM-MTD3.')
+    parser.add_argument('--sac_alpha', type=float, default=0.2, help='Entropy regularization coefficient of SAC and MSAC.')
     parser.add_argument('--ppo_clip_ratio', type=float, default=0.2)
     parser.add_argument('--adv_use_gae_lambda', type=str2bool, nargs='?', const=True, default=True, help="Use GAE-lambda advantage in PPO as default")
     parser.add_argument('--v_use_multistep_return', type=str2bool, nargs='?', const=True, default=True, help="Use multistep return when not use GAE in PPO as default")
@@ -693,7 +694,7 @@ if __name__ == '__main__':
                         rl_agent=args.rl_agent,
                         hidden_sizes=hidden_sizes,
                         gamma=args.gamma,
-                        act_noise=args.td3_act_noise,
+                        act_noise=args.td3_act_noise, sac_alpha=args.sac_alpha,
                         multistep_size=args.multistep_size,
                         ppo_clip_ratio=args.ppo_clip_ratio,
                         adv_use_gae_lambda=args.adv_use_gae_lambda,
