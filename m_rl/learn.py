@@ -28,7 +28,8 @@ import sqlite3
 
 
 def preference_teaching(env_id, env_dp_type,
-                        env_act_transform_type, env_obs_delay_step,
+                        env_act_transform_type, env_obs_delay_step, 
+                        env_acc_multi_step_reward, env_acc_multi_step_rew_type, env_acc_rew_discount_factor,
                         seed, gym_env_obs_tile, stochastic_env,
                         rl_agent, gamma, multistep_size,
                         ppo_clip_ratio=0.2,
@@ -64,7 +65,11 @@ def preference_teaching(env_id, env_dp_type,
     # Creat environment
     gym_env_obs_tile_num = gym_env_obs_tile
     gym_env_obs_tile_value = -1
-    intl_env = IntlEnv(env_id, env_dp_type=env_dp_type, act_transform_type=env_act_transform_type, obs_delay_step=env_obs_delay_step,
+    intl_env = IntlEnv(env_id, env_dp_type=env_dp_type, act_transform_type=env_act_transform_type, 
+                       obs_delay_step=env_obs_delay_step, 
+                       acc_multi_step_reward=env_acc_multi_step_reward, 
+                       acc_multi_step_rew_type=env_acc_multi_step_rew_type, 
+                       acc_rew_discount_factor=env_acc_rew_discount_factor,
                        render_width=640, render_height=480, seed=seed,
                        obs_tile_num=gym_env_obs_tile_num, obs_tile_value=gym_env_obs_tile_value)  # used to interact with the environment
     save_checkpoint_every_n_steps = 1000
@@ -302,7 +307,11 @@ def preference_teaching(env_id, env_dp_type,
                 # Test the performance of the deterministic version of the agent.
                 def test_agent(agent, logger):
                     # Define env outside the loop, otherwise with the same seed the results will be the same.
-                    test_intl_env = IntlEnv(env_id, env_dp_type=env_dp_type, act_transform_type=env_act_transform_type, obs_delay_step=env_obs_delay_step,
+                    test_intl_env = IntlEnv(env_id, env_dp_type=env_dp_type, act_transform_type=env_act_transform_type, 
+                                            obs_delay_step=env_obs_delay_step, 
+                                            acc_multi_step_reward=env_acc_multi_step_reward,
+                                            acc_multi_step_rew_type=env_acc_multi_step_rew_type, 
+                                            acc_rew_discount_factor=env_acc_rew_discount_factor,
                                             render_width=640, render_height=480,
                                             seed=seed, obs_tile_num=gym_env_obs_tile_num,
                                             obs_tile_value=gym_env_obs_tile_value)  # used to interact with the environment
@@ -353,7 +362,11 @@ def preference_teaching(env_id, env_dp_type,
                 # Test the performance of the deterministic version of the agent.
                 def test_agent(agent, logger):
                     # Define env outside the loop, otherwise with the same seed the results will be the same.
-                    test_intl_env = IntlEnv(env_id, env_dp_type=env_dp_type, act_transform_type=env_act_transform_type, obs_delay_step=env_obs_delay_step,
+                    test_intl_env = IntlEnv(env_id, env_dp_type=env_dp_type, act_transform_type=env_act_transform_type, 
+                                            obs_delay_step=env_obs_delay_step, 
+                                            acc_multi_step_reward=env_acc_multi_step_reward, 
+                                            acc_multi_step_rew_type=env_acc_multi_step_rew_type, 
+                                            acc_rew_discount_factor=env_acc_rew_discount_factor,
                                             render_width=640, render_height=480,
                                             seed=seed, obs_tile_num=gym_env_obs_tile_num, obs_tile_value=gym_env_obs_tile_value)  # used to interact with the environment
                     max_ep_len = test_intl_env._max_episode_steps
@@ -405,7 +418,11 @@ def preference_teaching(env_id, env_dp_type,
                 # Test the performance of the deterministic version of the agent.
                 def test_agent(agent, logger):
                     # Define env outside the loop, otherwise with the same seed the results will be the same.
-                    test_intl_env = IntlEnv(env_id, env_dp_type=env_dp_type, act_transform_type=env_act_transform_type, obs_delay_step=env_obs_delay_step,
+                    test_intl_env = IntlEnv(env_id, env_dp_type=env_dp_type, act_transform_type=env_act_transform_type, 
+                                            obs_delay_step=env_obs_delay_step, 
+                                            acc_multi_step_reward=env_acc_multi_step_reward,
+                                            acc_multi_step_rew_type=env_acc_multi_step_rew_type, 
+                                            acc_rew_discount_factor=env_acc_rew_discount_factor,
                                             render_width=640, render_height=480,
                                             seed=seed, obs_tile_num=gym_env_obs_tile_num, obs_tile_value=gym_env_obs_tile_value)  # used to interact with the environment
                     max_ep_len = test_intl_env._max_episode_steps
@@ -456,7 +473,11 @@ def preference_teaching(env_id, env_dp_type,
             elif rl_agent == 'SAC' or rl_agent == 'MSAC':
                 def test_agent(agent, logger):
                     # Define env outside the loop, otherwise with the same seed the results will be the same.
-                    test_intl_env = IntlEnv(env_id, env_dp_type=env_dp_type, act_transform_type=env_act_transform_type, obs_delay_step=env_obs_delay_step,
+                    test_intl_env = IntlEnv(env_id, env_dp_type=env_dp_type, act_transform_type=env_act_transform_type, 
+                                            obs_delay_step=env_obs_delay_step, 
+                                            acc_multi_step_reward=env_acc_multi_step_reward,
+                                            acc_multi_step_rew_type=env_acc_multi_step_rew_type, 
+                                            acc_rew_discount_factor=env_acc_rew_discount_factor,
                                             render_width=640, render_height=480,
                                             seed=seed, obs_tile_num=gym_env_obs_tile_num, obs_tile_value=gym_env_obs_tile_value)  # used to interact with the environment
                     max_ep_len = test_intl_env._max_episode_steps
@@ -526,7 +547,10 @@ def preference_teaching(env_id, env_dp_type,
             elif rl_agent == 'LSTM-TD3' or rl_agent == 'LSTM-MTD3':
                 def test_agent(agent, logger):
                     # Define env outside the loop, otherwise with the same seed the results will be the same.
-                    test_intl_env = IntlEnv(env_id, env_dp_type=env_dp_type, act_transform_type=env_act_transform_type, obs_delay_step=env_obs_delay_step,
+                    test_intl_env = IntlEnv(env_id, env_dp_type=env_dp_type, act_transform_type=env_act_transform_type, 
+                                            obs_delay_step=env_obs_delay_step, acc_multi_step_reward=env_acc_multi_step_reward,
+                                            acc_multi_step_rew_type=env_acc_multi_step_rew_type, 
+                                            acc_rew_discount_factor=env_acc_rew_discount_factor,
                                             render_width=640, render_height=480,
                                             seed=seed, obs_tile_num=gym_env_obs_tile_num,
                                             obs_tile_value=gym_env_obs_tile_value)  # used to interact with the environment
@@ -629,6 +653,9 @@ if __name__ == '__main__':
     parser.add_argument('--env_act_transform_type', choices=['neg', 'tanh', 'sign_square', 'abs_times_2_minus_1', 'neg_abs_times_2_plus_1', 'random'],
                         default=None)
     parser.add_argument('--env_obs_delay_step', type=int, default=None)
+    parser.add_argument('--env_acc_multi_step_reward', type=int, default=1, help="Specify how many steps of reward are used to acculated a new reward. If ==1, the reward is unchanged.")
+    parser.add_argument('--env_acc_multi_step_rew_type', choices=['acc_rew_sum', 'acc_rew_avg', 'acc_rew_discount'], default='acc_rew_discount')
+    parser.add_argument('--env_acc_rew_discount_factor', type=float, default=0.99)
     parser.add_argument('--gym_env_obs_tile', type=int, default=1, help="How many times to tile the observation (Only used in Gym tasks)")
     parser.add_argument('--stochastic_env', type=float, default=0)
 
@@ -688,7 +715,12 @@ if __name__ == '__main__':
 
     # Start preference teaching
     preference_teaching(env_id=args.env_id, env_dp_type=args.env_dp_type,
-                        env_act_transform_type=args.env_act_transform_type, env_obs_delay_step=args.env_obs_delay_step, seed=args.seed,
+                        env_act_transform_type=args.env_act_transform_type, 
+                        env_obs_delay_step=args.env_obs_delay_step, 
+                        env_acc_multi_step_reward=args.env_acc_multi_step_reward,
+                        env_acc_multi_step_rew_type=args.env_acc_multi_step_rew_type,
+                        env_acc_rew_discount_factor=args.env_acc_rew_discount_factor,
+                        seed=args.seed,
                         gym_env_obs_tile=args.gym_env_obs_tile, stochastic_env=args.stochastic_env,
                         epochs=args.epochs,
                         rl_agent=args.rl_agent,

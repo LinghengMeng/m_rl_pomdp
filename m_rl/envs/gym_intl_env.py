@@ -17,7 +17,8 @@ from m_rl.envs.env import make_gym_task
 class IntlEnv(gym.Wrapper):
     """Internal Environment is the place to define reward signal when it is provided by external environment."""
     def __init__(self, env_id, seed,
-                 env_dp_type='MDP', act_transform_type=None, obs_delay_step=0,
+                 env_dp_type='MDP', act_transform_type=None, obs_delay_step=0, 
+                 acc_multi_step_reward=1, acc_multi_step_rew_type='acc_rew_discount', acc_rew_discount_factor=0.99,
                  render_width=640, render_height=480, obs_tile_num=1, obs_tile_value=None):
         super(IntlEnv, self).__init__(make_gym_task(env_id, dp_type=env_dp_type,
                                                     render_width=render_width, render_height=render_height,
@@ -43,6 +44,11 @@ class IntlEnv(gym.Wrapper):
         self.obs_dim = self.observation_space.shape[0]
         self.act_dim = self.action_space.shape[0]
         self.obs_traj, self.act_traj, self.obs2_traj = [], [], []
+        # Accumulate multi-step reward
+        self.acc_multi_step_reward = acc_multi_step_reward    # Specify how many steps will be used for accumulating reward. If acc_multi_step_reward == 1, the reward is the original.
+        self.acc_multi_step_rew_type = acc_multi_step_rew_type  # Specify accumulating type (acc_rew_sum, acc_rew_avg, acc_rew_discount)
+        self.acc_rew_discount_factor = acc_rew_discount_factor
+        self.acc_rew_queue = collections.deque(maxlen=self.acc_multi_step_reward)
 
     def render_full_obs(self, full_obs):
         return self.env.render_full_obs(full_obs)
@@ -73,12 +79,31 @@ class IntlEnv(gym.Wrapper):
         obs2, orig_rew, terminated, truncated,  info = self.env.step(act)
         new_obs_ts = datetime.now()
 
+        # Append reward to accumalative reward queue
+        self.acc_rew_queue.append(orig_rew)
+
+        # Accumulate multistep reward
+        if self.acc_multi_step_reward == 1:
+            acc_rew = orig_rew      # If not using accumulated multistep reward, don't need to calculate in order to save time.
+        elif self.acc_multi_step_reward > 1:
+            if self.acc_multi_step_rew_type == 'acc_rew_sum':
+                acc_rew = np.sum(self.acc_rew_queue)                   # Summation
+            elif self.acc_multi_step_rew_type == 'acc_rew_avg':
+                acc_rew = np.average(self.acc_rew_queue)               # Average
+            elif self.acc_multi_step_rew_type == 'acc_rew_discount':   # Discounted
+                self.acc_rew_discount = 0.5                            
+                acc_rew = np.multiply(self.acc_rew_queue, np.array([self.acc_rew_discount_factor**i for i in range(len(self.acc_rew_queue)-1, -1,-1)])).sum()
+            else:
+                raise ValueError('Wrong acc_multi_step_rew_type={}!'.format(self.acc_multi_step_rew_type))
+        else:
+            raise ValueError('Wrong acc_multi_step_reward={}!'.format(self.acc_multi_step_reward))
+        
         # Observation delay
         if self.obs_delay_step is None or self.obs_delay_step == 0:
-            extl_rew = orig_rew
+            extl_rew = acc_rew
         else:
             self.obs_delay_queue.append(obs2)
-            self.rew_delay_queue.append(orig_rew)
+            self.rew_delay_queue.append(acc_rew)
             if len(self.obs_delay_queue) < (self.obs_delay_step+1):
                 # TODO: return random rather than zero for the first few observations
                 obs2 = np.zeros(self.observation_space.shape[0])
